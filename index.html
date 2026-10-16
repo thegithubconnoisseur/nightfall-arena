@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nightfall Arena</title>
+    <meta name="description" content="A three-boss souls-like arena. Blade, gun, and a well timed roll." />
+    <link rel="stylesheet" href="styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <canvas id="scene"></canvas>
+
+    <div id="hud" hidden>
+      <div class="hudLeft">
+        <div class="bar hpBar"><i id="hpFill"></i></div>
+        <div class="bar stBar"><i id="stFill"></i></div>
+        <div id="flaskRow"></div>
+      </div>
+
+      <div class="hudRight">
+        <div id="scoreLabel">0</div>
+        <div id="bossLabel">Boss 1 / 3</div>
+      </div>
+
+      <div id="bossBar" hidden>
+        <div id="bossName"></div>
+        <div class="bar bossBar"><i id="bossFill"></i></div>
+      </div>
+
+      <div id="banner" hidden>
+        <h2 id="bannerTitle"></h2>
+        <p id="bannerSub"></p>
+      </div>
+
+      <button id="pauseBtn" class="btn small" type="button">Menu</button>
+    </div>
+
+    <div id="screenMenu" class="screen">
+      <div class="panel">
+        <h1>Nightfall Arena</h1>
+        <p class="tagline">Three monsters stand between you and daylight. One blade, one gun, and a roll.</p>
+
+        <div id="identity" class="identity"></div>
+        <div id="menuButtons" class="buttons"></div>
+        <p id="menuNote" class="note"></p>
+
+        <section class="board">
+          <h3>Leaderboard</h3>
+          <ol id="boardList"></ol>
+          <p id="boardEmpty" class="note">No runs yet. Be the first to bleed here.</p>
+        </section>
+
+        <section class="controls">
+          <h3>Controls</h3>
+          <ul>
+            <li><b>W</b> or <b>up</b> — run straight ahead, wherever you are facing</li>
+            <li><b>S</b> or <b>down</b> — back away, still facing the same way</li>
+            <li><b>A</b>/<b>D</b> or <b>left</b>/<b>right</b> — turn on the spot; the camera follows you round</li>
+            <li><b>Left click</b> or <b>J</b> — sword</li>
+            <li><b>Right click</b> or <b>K</b> — gun</li>
+            <li><b>Space</b> or <b>Shift</b> — dodge roll, briefly invulnerable</li>
+            <li><b>Q</b> — drink a flask</li>
+            <li><b>Esc</b> — back to the menu</li>
+          </ul>
+          <p class="note small">Stamina gates everything. Swing and roll until it runs dry and you're a sitting duck.</p>
+        </section>
+      </div>
+    </div>
+
+    <div id="screenOver" class="screen" hidden>
+      <div class="panel">
+        <h2 id="overTitle"></h2>
+        <p id="overSub" class="tagline"></p>
+        <div id="overStats" class="stats"></div>
+        <p id="overBest" class="note"></p>
+        <div id="overButtons" class="buttons"></div>
+
+        <section class="board">
+          <h3>Leaderboard</h3>
+          <ol id="overBoardList"></ol>
+          <p id="overBoardEmpty" class="note">No runs yet.</p>
+        </section>
+      </div>
+    </div>
+
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
