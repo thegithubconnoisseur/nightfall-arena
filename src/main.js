@@ -1,4 +1,4 @@
-import { START_NG, getCurrentUser, onUserChange, signIn, guestStyle } from './platform.js';
+import { START_NG, getCurrentUser, onUserChange, signIn, guestStyle, returnedFromSignIn } from './platform.js';
 import { normalizeStyle } from './character.js';
 import { Game } from './game.js';
 import { playerId, submitRun, leaderboard } from './saves.js';
@@ -17,7 +17,11 @@ const game = new Game(canvas);
 
 let user = null;
 let style = normalizeStyle(null);
+// Just back from start.ng's sign-in: hold the menu on "checking" instead of
+// flashing "Sign in" at someone who just did.
+let checking = returnedFromSignIn();
 let running = false;
+let runAsGuest = false;
 let lastBannerKey = -1;
 let lastHudAt = 0;
 let lastFlasks = -1;
@@ -63,7 +67,15 @@ function renderIdentity() {
     // Somewhere other than start.ng: no sign-in is possible at all.
     box.innerHTML = '<p class="who">Playing as <b>Guest</b></p>';
     note.textContent = 'Sign-in isn’t available here — this copy isn’t running on start.ng, so you play as a guest.';
-    button('Enter the arena', startRun, 'primary');
+    button('Enter the arena', () => startRun(true), 'primary');
+    return;
+  }
+
+  if (checking) {
+    // Fresh back from signing in: start.ng may still be working out who we are.
+    box.innerHTML = '<p class="who">Checking your start.ng profile…</p>';
+    note.textContent = 'One moment while start.ng tells us who you are. You can start as a guest right away.';
+    button('Play as guest', () => startRun(true), 'primary');
     return;
   }
 
@@ -72,7 +84,8 @@ function renderIdentity() {
     box.innerHTML = `<p class="who">Welcome, <b>${escapeHtml(name)}</b></p>
       <p class="look">${swatches(style)} <span>${style.hat} · ${style.accessory}</span></p>`;
     note.textContent = 'Your start.ng colours are on your armour, and your hat and accessory are on your head and back.';
-    button('Enter the arena', startRun, 'primary');
+    button('Enter the arena', () => startRun(false), 'primary');
+    button('Play as guest', () => startRun(true));
     const out = document.createElement('button');
     out.type = 'button';
     out.className = 'btn link';
@@ -88,13 +101,13 @@ function renderIdentity() {
   if (openedAsGuest) {
     // The player already picked guest on start.ng, so don't ask again.
     note.textContent = 'Playing as a guest. Sign in any time to wear your own colours.';
-    button('Enter the arena', startRun, 'primary');
+    button('Enter the arena', () => startRun(true), 'primary');
     button('Sign in with start.ng', () => signIn());
     return;
   }
   note.textContent = 'Sign in to put your own colours, hat and accessory on your character.';
   button('Sign in with start.ng', () => signIn(), 'primary');
-  button('Play as guest', startRun);
+  button('Play as guest', () => startRun(true));
 }
 
 function escapeHtml(value) {
@@ -125,12 +138,17 @@ function renderBoards() {
 
 // ---------------------------------------------------------------- run flow
 
-function startRun() {
+function startRun(asGuest = false) {
+  runAsGuest = asGuest;
   showHud();
   lastBannerKey = -1;
   lastFlasks = -1;
   running = true;
-  game.start({ style, onHud: renderHud, onEnd: finishRun });
+  game.start({
+    style: asGuest ? normalizeStyle(guestStyle()) : style,
+    onHud: renderHud,
+    onEnd: finishRun,
+  });
 }
 
 function backToMenu() {
@@ -144,8 +162,8 @@ function backToMenu() {
 
 function finishRun(result) {
   running = false;
-  const name = user?.name || 'Guest';
-  const id = playerId(user);
+  const name = runAsGuest ? 'Guest' : user?.name || 'Guest';
+  const id = playerId(runAsGuest ? null : user);
   const saved = submitRun(id, {
     name,
     score: result.score,
@@ -172,7 +190,7 @@ function finishRun(result) {
   const buttons = $('overButtons');
   buttons.innerHTML = '';
   for (const [label, handler, kind] of [
-    ['Fight again', startRun, 'primary'],
+    ['Fight again', () => startRun(runAsGuest), 'primary'],
     ['Back to the menu', backToMenu, ''],
   ]) {
     const el = document.createElement('button');
@@ -246,17 +264,21 @@ addEventListener('resize', () => {
 
 $('pauseBtn').addEventListener('click', backToMenu);
 
-onUserChange((next) => {
+function applyUser(next) {
   user = next;
   style = normalizeStyle(next?.style ?? guestStyle());
+  checking = false;
   if (running) {
-    // Signed in or out mid-run: repaint the hero, leave the fight alone.
-    game.setStyle(style);
+    // Signed in or out mid-run: repaint the hero, leave the fight alone — unless
+    // this run was started as a guest, which keeps the guest look.
+    if (!runAsGuest) game.setStyle(style);
   } else {
     renderIdentity();
     renderBoards();
   }
-});
+}
+
+onUserChange(applyUser);
 
 renderIdentity();
 renderBoards();
@@ -264,9 +286,4 @@ game.preview();
 showMenu();
 
 // Ask start.ng who is here. A slow or missing answer leaves us as a guest.
-getCurrentUser().then((answer) => {
-  user = answer;
-  style = normalizeStyle(answer?.style ?? guestStyle());
-  renderIdentity();
-  renderBoards();
-});
+getCurrentUser().then(applyUser);

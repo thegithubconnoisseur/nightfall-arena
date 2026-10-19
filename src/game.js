@@ -12,8 +12,15 @@ const ARENA_RADIUS = 20;
 const CAM_DIST = 9.5;
 const CAM_HEIGHT = 5.5;
 const CAM_LOOK_Y = 2.2;
-// How quickly the lens swings round to sit behind the hero again.
-const CAM_FOLLOW = 3.6;
+// Camera lock-on, Elden Ring style: the hero keeps his eyes on the boss and the
+// lens orbits behind him as he circles, without snapping or drifting on its own
+// when the keys are released. With no live boss he runs free, camera following
+// only while he moves.
+const CAM_FOLLOW_LOCK = 6;
+const CAM_FOLLOW_MOVE = 1.6;
+// How quickly the hero turns to face the boss while locked, or his stride when free.
+const LOCK_TURN = 10;
+const RUN_TURN = 14;
 // A roll tumbles the body around this point, roughly the chest, not the feet.
 const ROLL_PIVOT = 0.95;
 
@@ -28,7 +35,6 @@ const PLAYER = {
   staminaRegen: 30,
   staminaDelay: 0.4,
   speed: 6.6,
-  turnSpeed: 3.4,
   rollSpeed: 13.5,
   rollTime: 0.34,
   rollCost: 26,
@@ -556,25 +562,43 @@ function buildBrute(def, glow, m) {
   const group = new THREE.Group();
   const parts = {};
 
-  // Legs: thick thighs, planted hooves.
-  for (const sx of [-0.36, 0.36]) {
-    group.add(limb(0.24, 0.42, m.dark, sx, 0.66, 0));
-    group.add(limb(0.19, 0.3, m.mat, sx, 0.28, 0.02));
+  // Legs on hip pivots, so the brute lumbers with its whole weight.
+  const legs = {};
+  for (const [key, side] of [['left', -1], ['right', 1]]) {
+    const sx = side * 0.36;
+    const hip = new THREE.Group();
+    hip.position.set(sx, 0.98, 0);
+    hip.add(limb(0.24, 0.42, m.dark, 0, -0.32, 0));
+    hip.add(limb(0.19, 0.3, m.mat, 0, -0.7, 0.02));
     const hoof = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.3, 0.22, 10), m.dark);
-    hoof.position.set(sx, 0.11, 0.05);
-    group.add(hoof);
-    const toe = spike(0.07, 0.22, m.bone, sx, 0.12, 0.28);
+    hoof.position.set(0, -0.87, 0.05);
+    hip.add(hoof);
+    const toe = spike(0.07, 0.22, m.bone, 0, -0.86, 0.28);
     toe.rotation.x = Math.PI / 2.4;
-    group.add(toe);
-    const knee = spike(0.09, 0.26, m.bone, sx, 0.52, 0.2);
+    hip.add(toe);
+    const knee = spike(0.09, 0.26, m.bone, 0, -0.46, 0.2);
     knee.rotation.x = Math.PI / 2.6;
-    group.add(knee);
+    hip.add(knee);
+    const greave = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.12, 10), m.dark);
+    greave.position.set(0, -0.76, 0.02);
+    hip.add(greave);
+    group.add(hip);
+    legs[key] = hip;
   }
 
   // Hips and a barrel chest, with embers glowing through the plate.
   const hips = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.62, 0.34, 14), m.dark);
   hips.position.y = 1.02;
   group.add(hips);
+  const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.64, 0.64, 0.12, 14), m.dark);
+  belt.position.y = 1.08;
+  group.add(belt);
+  for (let i = -1; i <= 1; i += 1) {
+    const tasset = block(0.3, 0.42, 0.06, m.steel, i * 0.3, 0.82, 0.52);
+    tasset.rotation.x = -0.18;
+    tasset.rotation.z = -i * 0.15;
+    group.add(tasset);
+  }
   const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.56, 1.0, 14), m.mat);
   torso.position.y = 1.62;
   group.add(torso);
@@ -684,6 +708,7 @@ function buildBrute(def, glow, m) {
 
   group.add(shadowDisc(1.1));
   parts.shadow = group.children[group.children.length - 1];
+  parts.legs = legs;
   return { group, mat: m.mat, arms, parts };
 }
 
@@ -691,22 +716,40 @@ function buildBeast(def, glow, m) {
   const group = new THREE.Group();
   const parts = {};
 
-  // Digitigrade hind legs, splayed toes.
-  for (const sx of [-0.34, 0.34]) {
-    const thigh = limb(0.23, 0.34, m.mat, sx, 0.66, 0.06);
+  // Digitigrade hind legs, splayed toes, hinged at the hip so it can lope.
+  const legs = {};
+  for (const [key, side] of [['left', -1], ['right', 1]]) {
+    const sx = side * 0.34;
+    const hip = new THREE.Group();
+    hip.position.set(sx, 0.98, 0);
+    const thigh = limb(0.23, 0.34, m.mat, 0, -0.32, 0.06);
     thigh.rotation.x = -0.5;
-    group.add(thigh);
-    const shin = limb(0.16, 0.34, m.dark, sx, 0.3, -0.06);
+    hip.add(thigh);
+    const shin = limb(0.16, 0.34, m.dark, 0, -0.68, -0.06);
     shin.rotation.x = 0.55;
-    group.add(shin);
+    hip.add(shin);
     const foot = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 10), m.dark);
-    foot.position.set(sx, 0.1, 0.1);
+    foot.position.set(0, -0.88, 0.1);
     foot.scale.set(1, 0.6, 1.7);
-    group.add(foot);
+    hip.add(foot);
     for (let i = 0; i < 3; i += 1) {
-      const claw = spike(0.045, 0.2, m.bone, sx + (i - 1) * 0.11, 0.06, 0.3);
+      const claw = spike(0.045, 0.2, m.bone, (i - 1) * 0.11, -0.92, 0.3);
       claw.rotation.x = Math.PI / 2.2;
-      group.add(claw);
+      hip.add(claw);
+    }
+    const hock = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 10), m.dark);
+    hock.position.set(0, -0.06, -0.14);
+    hip.add(hock);
+    group.add(hip);
+    legs[key] = hip;
+  }
+  // Flank scales, so the hide reads as hide and not a bare sphere.
+  for (const sx of [-1, 1]) {
+    for (let i = 0; i < 3; i += 1) {
+      const scale = new THREE.Mesh(new THREE.SphereGeometry(0.075 - i * 0.012, 10, 8), m.dark);
+      scale.position.set(sx * (0.48 - i * 0.04), 1.28 + i * 0.13, -0.16 + i * 0.03);
+      scale.scale.y = 0.65;
+      group.add(scale);
     }
   }
 
@@ -834,6 +877,7 @@ function buildBeast(def, glow, m) {
   group.add(shadowDisc(1.05));
   parts.shadow = group.children[group.children.length - 1];
   parts.spread = 0.22; // its arms hang splayed out from the shoulders
+  parts.legs = legs;
   return { group, mat: m.mat, arms, parts };
 }
 
@@ -998,12 +1042,24 @@ function buildGrunt(m) {
   const parts = {};
   const arms = {};
 
-  for (const sx of [-0.17, 0.17]) {
-    group.add(limb(0.1, 0.22, m.dark, sx, 0.42, 0));
+  const legs = {};
+  for (const [key, side] of [['left', -1], ['right', 1]]) {
+    const sx = side * 0.17;
+    const hip = new THREE.Group();
+    hip.position.set(sx, 0.55, 0);
+    hip.add(limb(0.1, 0.22, m.dark, 0, -0.13, 0));
+    hip.add(limb(0.07, 0.16, m.dark, 0, -0.32, 0.02));
+    const wrap = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.05, 8), m.bone);
+    wrap.position.set(0, -0.3, 0.02);
+    hip.add(wrap);
     const foot = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), m.dark);
-    foot.position.set(sx, 0.07, 0.06);
+    foot.position.set(0, -0.48, 0.06);
     foot.scale.set(1, 0.7, 1.7);
-    group.add(foot);
+    hip.add(foot);
+    const toe = block(0.1, 0.04, 0.08, m.bone, 0, -0.49, 0.2);
+    hip.add(toe);
+    group.add(hip);
+    legs[key] = hip;
   }
 
   const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.32, 0.36, 10, 1, true), m.dark);
@@ -1087,6 +1143,7 @@ function buildGrunt(m) {
 
   group.add(shadowDisc(GRUNT.radius * 0.95));
   parts.shadow = group.children[group.children.length - 1];
+  parts.legs = legs;
   return { group, mat: m.mat, arms, parts };
 }
 
@@ -1111,15 +1168,20 @@ function buildSpitter(m) {
     group.add(wart);
   }
 
-  // Four stubby legs, so it squats rather than stands.
+  // Four stubby legs on hip pivots, so it scurries rather than slides.
+  const legs = [];
   for (const [sx, sz] of [[-0.3, 0.16], [0.3, 0.16], [-0.32, -0.2], [0.32, -0.2]]) {
-    const leg = limb(0.09, 0.18, m.dark, sx, 0.3, sz);
+    const hip = new THREE.Group();
+    hip.position.set(sx, 0.42, sz);
+    const leg = limb(0.09, 0.18, m.dark, 0, -0.12, 0);
     leg.rotation.z = sx > 0 ? -0.35 : 0.35;
-    group.add(leg);
+    hip.add(leg);
     const foot = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), m.dark);
-    foot.position.set(sx * 1.25, 0.08, sz + 0.06);
+    foot.position.set(sx * 0.25, -0.34, 0.06);
     foot.scale.set(1.1, 0.6, 1.5);
-    group.add(foot);
+    hip.add(foot);
+    group.add(hip);
+    legs.push(hip);
   }
 
   const head = new THREE.Group();
@@ -1169,6 +1231,7 @@ function buildSpitter(m) {
 
   group.add(shadowDisc(SPITTER.radius * 1.1));
   parts.shadow = group.children[group.children.length - 1];
+  parts.legs = legs;
   return { group, mat: m.mat, arms, parts };
 }
 
@@ -1297,6 +1360,10 @@ export class Game {
       fallTime: 0,
       moveX: 0,
       moveZ: 0,
+      moving: false,
+      locked: false,
+      runPhase: 0,
+      runAmount: 0,
     };
 
     this.hero.group.visible = true;
@@ -1306,6 +1373,11 @@ export class Game {
     this.hero.body.position.set(0, 0, 0);
     this.hero.rightArm.rotation.set(0, 0, -0.14);
     this.hero.leftArm.rotation.set(0, 0, 0.14);
+    for (const leg of Object.values(this.hero.legs)) {
+      leg.hip.rotation.set(0, 0, 0);
+      leg.knee.rotation.set(0, 0, 0);
+    }
+    this.hero.cape.rotation.set(0, Math.PI, 0);
     this.hero.materials.primary.emissive.setHex(0x000000);
 
     // Start looking the same way the hero is facing: down the pit, at the gate.
@@ -1368,6 +1440,9 @@ export class Game {
       arms: body.arms,
       parts: body.parts,
       phase: Math.random() * Math.PI * 2,
+      gait: 0,
+      gaitPhase: Math.random() * Math.PI * 2,
+      gaitSpeed: 0,
       radius: def.radius,
       hp: def.hp,
       maxHp: def.hp,
@@ -1547,6 +1622,9 @@ export class Game {
       arms: body.arms,
       parts: body.parts,
       phase: Math.random() * Math.PI * 2,
+      gait: 0,
+      gaitPhase: Math.random() * Math.PI * 2,
+      gaitSpeed: 0,
       radius: def.radius,
       hp: def.hp,
       maxHp: def.hp,
@@ -1659,8 +1737,6 @@ export class Game {
       p.roll.dx = Math.sin(p.facing);
       p.roll.dz = Math.cos(p.facing);
     }
-    // Backpedalling rolls backwards: the tumble follows the direction of travel.
-    p.roll.spin = p.roll.dx * Math.sin(p.facing) + p.roll.dz * Math.cos(p.facing) >= 0 ? 1 : -1;
     p.invuln = Math.max(p.invuln, PLAYER.rollIframes);
   }
 
@@ -1671,13 +1747,17 @@ export class Game {
   _poseRoll(t) {
     const body = this.hero.body;
     if (t === 0) {
-      body.rotation.x = 0;
+      body.rotation.set(0, 0, 0);
       body.position.set(0, 0, 0);
       this.hero.rightArm.rotation.set(0, 0, -0.14);
       this.hero.leftArm.rotation.set(0, 0, 0.14);
+      for (const leg of Object.values(this.hero.legs)) {
+        leg.hip.rotation.set(0, 0, 0);
+        leg.knee.rotation.set(0, 0, 0);
+      }
       return;
     }
-    const angle = t * Math.PI * 2; // negative t tumbles backwards
+    const angle = t * Math.PI * 2;
     body.rotation.x = angle;
     body.position.set(
       0,
@@ -1686,6 +1766,10 @@ export class Game {
     );
     this.hero.rightArm.rotation.set(-1.5, 0, -0.5);
     this.hero.leftArm.rotation.set(-1.5, 0, 0.5);
+    for (const leg of Object.values(this.hero.legs)) {
+      leg.hip.rotation.x = -1.0;
+      leg.knee.rotation.x = 1.5;
+    }
   }
 
   _resolveSwing() {
@@ -1780,6 +1864,62 @@ export class Game {
     if (this.restTimer <= 0) this._nextBoss();
   }
 
+  /** Turns the hero toward an angle the short way — quickly, but not a snap. */
+  _faceTowards(angle, dt, rate = 12) {
+    const p = this.player;
+    let diff = angle - p.facing;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    p.facing += diff * Math.min(1, dt * rate);
+  }
+
+  /**
+   * The run cycle, in the hero's own frame: forward and back steps swing the
+   * hips, side steps lift and plant the legs one at a time, and the chest leans
+   * and rolls into the stride. Everything is damped, so stopping eases back
+   * into the idle stance rather than snapping.
+   */
+  _poseRun(dt) {
+    const p = this.player;
+    const hero = this.hero;
+    const a = p.runAmount;
+    const k = Math.min(1, dt * 14);
+    const sinF = Math.sin(p.facing);
+    const cosF = Math.cos(p.facing);
+    const fx = p.moveX * sinF + p.moveZ * cosF; // forward part of the stride
+    const sx = -p.moveX * cosF + p.moveZ * sinF; // sideways part, positive right
+    const swing = Math.sin(p.runPhase) * 0.75 * fx * a;
+    const liftR = Math.max(0, Math.sin(p.runPhase)) * Math.abs(sx);
+    const liftL = Math.max(0, -Math.sin(p.runPhase)) * Math.abs(sx);
+    const sideOut = -0.3 * sx * a;
+    const targets = {
+      lh: swing,
+      rh: -swing,
+      lk: Math.max(0, swing) * 1.25 + liftL * 0.55,
+      rk: Math.max(0, -swing) * 1.25 + liftR * 0.55,
+      lz: sideOut * liftL,
+      rz: sideOut * liftR,
+      ra: swing * 0.55,
+      la: -swing * 0.55,
+      bob: Math.abs(Math.sin(p.runPhase)) * 0.055 * a,
+      lean: 0.11 * fx * a,
+      tilt: -0.055 * sx * a,
+    };
+    hero.legs.left.hip.rotation.x += (targets.lh - hero.legs.left.hip.rotation.x) * k;
+    hero.legs.right.hip.rotation.x += (targets.rh - hero.legs.right.hip.rotation.x) * k;
+    hero.legs.left.knee.rotation.x += (targets.lk - hero.legs.left.knee.rotation.x) * k;
+    hero.legs.right.knee.rotation.x += (targets.rk - hero.legs.right.knee.rotation.x) * k;
+    hero.legs.left.hip.rotation.z += (targets.lz - hero.legs.left.hip.rotation.z) * k;
+    hero.legs.right.hip.rotation.z += (targets.rz - hero.legs.right.hip.rotation.z) * k;
+    if (!p.swing.active) hero.rightArm.rotation.x += (targets.ra - hero.rightArm.rotation.x) * k;
+    if (p.gunKick <= 0) hero.leftArm.rotation.x += (targets.la - hero.leftArm.rotation.x) * k;
+    hero.body.position.y += (targets.bob - hero.body.position.y) * k;
+    hero.body.rotation.x += (targets.lean - hero.body.rotation.x) * k;
+    hero.body.rotation.z += (targets.tilt - hero.body.rotation.z) * k;
+    const capeTarget = -0.08 - 0.3 * a + Math.sin(p.runPhase * 2) * 0.04 * a;
+    hero.cape.rotation.x += (capeTarget - hero.cape.rotation.x) * k;
+  }
+
   _updatePlayer(dt) {
     const p = this.player;
     const pos = this.hero.group.position;
@@ -1792,33 +1932,63 @@ export class Game {
 
     if (this.dead) {
       p.roll.active = false;
-      this.hero.body.rotation.x = 0;
+      this.hero.body.rotation.set(0, 0, 0);
       this.hero.body.position.set(0, 0, 0);
+      for (const leg of Object.values(this.hero.legs)) {
+        leg.hip.rotation.set(0, 0, 0);
+        leg.knee.rotation.set(0, 0, 0);
+      }
       p.fallTime = Math.min(1, p.fallTime + dt * 2.4);
       this.hero.group.rotation.z = -p.fallTime * (Math.PI / 2);
       this.hero.group.position.y = -p.fallTime * 0.35;
       return;
     }
 
-    // Tank controls: W/S run straight along the facing, A/D turn the hero on the
-    // spot — with the camera following round — for as long as they are held.
-    // Forward never turns anything, so the camera holds still while you run.
-    let fwd = 0;
-    let turn = 0;
+    // Elden Ring lock-on. With a live boss the hero squares up to it by himself:
+    // W closes the gap, S backs away still facing it, A/D circles it, and the
+    // camera orbits because it rides on his facing. No key, no force — letting
+    // go stops him dead. With no boss alive he runs free, camera-relative,
+    // facing his stride.
     const k = this.keys;
+    let fwd = 0;
+    let side = 0;
     if (k.has('w') || k.has('arrowup')) fwd += 1;
     if (k.has('s') || k.has('arrowdown')) fwd -= 1;
-    if (k.has('a') || k.has('arrowleft')) turn += 1;
-    if (k.has('d') || k.has('arrowright')) turn -= 1;
+    if (k.has('a') || k.has('arrowleft')) side -= 1;
+    if (k.has('d') || k.has('arrowright')) side += 1;
 
-    if (turn !== 0 && !p.roll.active && !p.swing.active) {
-      p.facing += turn * PLAYER.turnSpeed * dt;
-      if (p.facing > Math.PI) p.facing -= Math.PI * 2;
-      else if (p.facing < -Math.PI) p.facing += Math.PI * 2;
+    const boss = this.boss && !this.boss.dead ? this.boss : null;
+    const moving = fwd !== 0 || side !== 0;
+    p.moving = moving;
+    p.locked = Boolean(boss);
+
+    let mx = 0;
+    let mz = 0;
+    if (moving) {
+      const norm = fwd !== 0 && side !== 0 ? Math.SQRT1_2 : 1;
+      if (boss) {
+        const bx = boss.group.position.x - pos.x;
+        const bz = boss.group.position.z - pos.z;
+        // Move in the frame of the boss itself, not the hero's still-turning
+        // facing: otherwise circling slowly spirals away from him.
+        const aim = Math.atan2(bx, bz);
+        this._faceTowards(aim, dt, LOCK_TURN);
+        const sin = Math.sin(aim);
+        const cos = Math.cos(aim);
+        mx = (sin * fwd - cos * side) * norm;
+        mz = (cos * fwd + sin * side) * norm;
+      } else {
+        const camSin = Math.sin(this.camYaw);
+        const camCos = Math.cos(this.camYaw);
+        mx = (camSin * fwd - camCos * side) * norm;
+        mz = (camCos * fwd + camSin * side) * norm;
+        this._faceTowards(Math.atan2(mx, mz), dt, RUN_TURN);
+      }
+    } else if (boss) {
+      const bx = boss.group.position.x - pos.x;
+      const bz = boss.group.position.z - pos.z;
+      if (bx * bx + bz * bz > 0.0001) this._faceTowards(Math.atan2(bx, bz), dt, LOCK_TURN);
     }
-
-    const mx = Math.sin(p.facing) * fwd;
-    const mz = Math.cos(p.facing) * fwd;
     p.moveX = mx;
     p.moveZ = mz;
 
@@ -1830,7 +2000,7 @@ export class Game {
       const step = PLAYER.rollSpeed * dt;
       pos.x += p.roll.dx * step;
       pos.z += p.roll.dz * step;
-      this._poseRoll(Math.min(1, p.roll.t / PLAYER.rollTime) * p.roll.spin);
+      this._poseRoll(Math.min(1, p.roll.t / PLAYER.rollTime));
       if (p.roll.t >= PLAYER.rollTime) {
         p.roll.active = false;
         this._poseRoll(0);
@@ -1841,10 +2011,15 @@ export class Game {
       pos.z += mz * PLAYER.speed * slow * dt;
     }
 
-    // Facing changes only on the turn keys, and holds during a roll, so running
-    // straight ahead is a straight line with nothing to chase.
+    // Aim rides on the facing. Mid-roll the body points where it tumbles.
     p.aim.set(Math.sin(p.facing), 0, Math.cos(p.facing));
-    this.hero.group.rotation.y = p.facing;
+    this.hero.group.rotation.y = p.roll.active ? Math.atan2(p.roll.dx, p.roll.dz) : p.facing;
+
+    // Run cycle, blended in while the keys are held and out when they stop.
+    const gait = moving && !p.roll.active && p.flaskTimer <= 0 ? 1 : 0;
+    p.runAmount += (gait - p.runAmount) * Math.min(1, dt * 9);
+    if (moving) p.runPhase += dt * 10.5 * (p.swing.active ? 0.5 : 1);
+    if (!p.roll.active) this._poseRun(dt);
 
     // Swing animation: wind up, snap through, settle.
     if (p.swing.active) {
@@ -1873,7 +2048,7 @@ export class Game {
       }
     }
 
-    if (!p.roll.active) {
+    if (!p.roll.active && p.gunKick > 0) {
       this.hero.leftArm.rotation.x = -1.5 * (p.gunKick / PLAYER.gunKickTime);
       this.hero.leftArm.rotation.z = 0.14;
     }
@@ -1923,12 +2098,15 @@ export class Game {
       const dist = Math.hypot(dx, dz) || 0.001;
       const nx = dx / dist;
       const nz = dz / dist;
+      const startX = e.group.position.x;
+      const startZ = e.group.position.z;
 
       if (e.kind === 'boss') {
         this._updateBoss(e, dt, nx, nz, dist);
       } else {
         this._updateMinion(e, dt, nx, nz, dist);
       }
+      e.gaitSpeed = dt > 0 ? Math.hypot(e.group.position.x - startX, e.group.position.z - startZ) / dt : 0;
 
       // Face the player, except mid-attack for the boss.
       if (!(e.kind === 'boss' && e.move)) {
@@ -1971,7 +2149,14 @@ export class Game {
     const walking = e.state === 'idle' || e.state === 'approach';
     const ranged = e.kind === 'boss' ? e.move === 'spit' || e.move === 'summon' : Boolean(e.def.ranged);
 
-    const sway = Math.sin(time * (walking ? 4.2 : 1.9) + e.phase);
+    // Track the gait from how far the monster actually travelled this frame, so
+    // legs pump at walking pace, sprint when it dashes, and settle when it stops.
+    const gaitTarget = Math.min(1.35, (e.gaitSpeed ?? 0) / Math.max(0.9, e.speed));
+    e.gait = (e.gait ?? 0) + (gaitTarget - (e.gait ?? 0)) * Math.min(1, dt * 9);
+    e.gaitPhase = (e.gaitPhase ?? e.phase) + dt * (4.5 + e.gait * 6.5);
+    const gait = e.gait;
+
+    const sway = Math.sin(time * (walking ? 4.2 : 1.9) + e.phase) * (0.18 + Math.min(1, gait) * 0.2);
     const pose = { lx: sway * 0.2, rx: -sway * 0.2, z: walking ? 0.08 : 0.14, lean: 0, jaw: 0, snap: 9 };
 
     if (e.state === 'windup') {
@@ -2043,13 +2228,31 @@ export class Game {
 
     if (parts.jaw) parts.jaw.rotation.x = pose.jaw * 0.85;
     if (parts.sac) parts.sac.scale.setScalar((parts.sac.userData.base ?? 1) * (1 + pose.jaw * 0.9));
-    if (parts.tail) parts.tail.rotation.y = Math.sin(time * 2.4 + e.phase) * 0.32;
+    if (parts.tail) {
+      parts.tail.rotation.y = Math.sin(time * 2.4 + e.phase) * 0.32;
+      parts.tail.rotation.x = Math.sin(time * 1.7 + e.phase) * 0.05 + Math.min(1, gait) * 0.08;
+    }
+    if (parts.cloak) parts.cloak.rotation.x = -0.16 + Math.sin(time * 2.1 + e.phase) * 0.05 + gait * 0.08;
 
-    // The Hollow King floats; everything else bobs as it walks.
+    // Legs, hinged at the hip. Quadrupeds scurry on diagonal pairs; bipeds stride.
+    if (parts.legs) {
+      if (Array.isArray(parts.legs)) {
+        for (let i = 0; i < parts.legs.length; i += 1) {
+          const offset = i === 0 || i === 3 ? 0 : Math.PI;
+          parts.legs[i].rotation.x = Math.sin(e.gaitPhase + offset) * 0.5 * Math.min(1, gait);
+        }
+      } else {
+        const stride = Math.sin(e.gaitPhase) * 0.62 * Math.min(1, gait);
+        if (parts.legs.left) parts.legs.left.rotation.x = stride;
+        if (parts.legs.right) parts.legs.right.rotation.x = -stride;
+      }
+    }
+
+    // The Hollow King floats; everything else bobs on its stride.
     if (parts.float) {
-      e.group.position.y = 0.3 + Math.sin(time * 1.6 + e.phase) * 0.12;
+      e.group.position.y = 0.3 + Math.sin(time * 1.6 + e.phase) * 0.12 + gait * 0.05;
     } else {
-      e.group.position.y = walking ? Math.abs(Math.sin(time * 5.5 + e.phase)) * 0.05 : 0;
+      e.group.position.y = Math.abs(Math.sin(e.gaitPhase)) * 0.07 * Math.min(1, gait);
     }
     if (parts.shadow) {
       const scale = e.group.scale.y || 1;
@@ -2352,12 +2555,18 @@ export class Game {
   _updateCamera(dt) {
     const target = this.hero.group.position;
 
-    // The lens swings round to sit behind the hero, taking the short way and
-    // never turning by itself. Standing still leaves the camera where it is.
+    // Locked on, the lens rides the hero's facing and so orbits as he circles
+    // the boss. Free, it only follows while he runs, and holds still when he
+    // stops.
     let turn = this.player.facing - this.camYaw;
     while (turn > Math.PI) turn -= Math.PI * 2;
     while (turn < -Math.PI) turn += Math.PI * 2;
-    this.camYaw += turn * Math.min(1, dt * CAM_FOLLOW);
+    const follow = this.player.locked
+      ? CAM_FOLLOW_LOCK
+      : this.player.moving
+        ? CAM_FOLLOW_MOVE
+        : 0;
+    this.camYaw += turn * Math.min(1, dt * follow);
 
     const desiredX = target.x - Math.sin(this.camYaw) * CAM_DIST;
     const desiredZ = target.z - Math.cos(this.camYaw) * CAM_DIST;

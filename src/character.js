@@ -203,16 +203,27 @@ export function createHero() {
   const hairMat = new THREE.MeshStandardMaterial({ color: 0x3b2b1e, roughness: 0.95 });
   const glow = new THREE.MeshBasicMaterial({ color: 0x9fe8ff });
 
-  // Legs: rounded thighs and shins, plated knees, heavy boots.
-  for (const sx of [-0.155, 0.155]) {
-    body.add(limb(0.115, 0.24, secondary, sx, 0.62, 0));
-    body.add(limb(0.095, 0.2, secondary, sx, 0.28, 0));
-    const knee = ball(0.09, dark, sx, 0.45, 0.05, 0.8);
-    body.add(knee);
-    const boot = ball(0.13, dark, sx, 0.075, 0.035, 0.72);
+  // Legs on hip and knee pivots, so the game can run them like a person's.
+  const legs = {};
+  for (const [key, side] of [['left', -1], ['right', 1]]) {
+    const sx = side * 0.155;
+    const hip = new THREE.Group();
+    hip.position.set(sx, 0.86, 0);
+    hip.add(limb(0.115, 0.24, secondary, 0, -0.24, 0));
+    const kneeJoint = new THREE.Group();
+    kneeJoint.position.set(0, -0.41, 0);
+    kneeJoint.add(ball(0.09, dark, 0, 0, 0.05, 0.8));
+    kneeJoint.add(limb(0.095, 0.2, secondary, 0, -0.17, 0));
+    kneeJoint.add(tube(0.105, 0.05, steel, 0, -0.28, 0, false, 12));
+    const boot = ball(0.13, dark, 0, -0.375, 0.035, 0.72);
     boot.scale.set(1.12, 1, 1.7);
-    body.add(boot);
-    body.add(tube(0.105, 0.05, steel, sx, 0.17, 0, false, 12));
+    kneeJoint.add(boot);
+    const cap = box(0.16, 0.07, 0.1, steel, 0, -0.385, 0.2);
+    cap.rotation.x = 0.15;
+    kneeJoint.add(cap);
+    hip.add(kneeJoint);
+    body.add(hip);
+    legs[key] = { hip, knee: kneeJoint };
   }
 
   // Hips, belt and buckle
@@ -221,6 +232,15 @@ export function createHero() {
   const buckle = new THREE.Mesh(new THREE.OctahedronGeometry(0.055), steel);
   buckle.position.set(0, 0.95, 0.26);
   body.add(buckle);
+  // Belt pouches, and a strap over one shoulder.
+  for (const sx of [-0.21, 0.2]) {
+    const pouch = box(0.13, 0.15, 0.1, dark, sx, 0.86, 0.16);
+    pouch.rotation.y = -sx * 0.3;
+    body.add(pouch);
+  }
+  const strap = box(0.075, 0.62, 0.035, dark, 0.1, 1.2, 0.26);
+  strap.rotation.z = -0.5;
+  body.add(strap);
 
   // Torso: a tapered chest over a waist, with a breastplate and a collar.
   body.add(taper(0.3, 0.235, 0.52, primary, 0, 1.19, 0, 16));
@@ -236,6 +256,7 @@ export function createHero() {
   body.add(collar);
 
   body.add(buildCape(capeCloth));
+  const cape = body.children[body.children.length - 1];
 
   // Neck and head. The head is a group so hats and accessories stay undistorted.
   body.add(taper(0.085, 0.1, 0.13, skin, 0, 1.52, 0, 12));
@@ -256,6 +277,8 @@ export function createHero() {
   nape.position.set(0, 0.015, -0.012);
   nape.scale.set(0.98, 1.04, 1);
   head.add(nape);
+  for (const sx of [-0.21, 0.21]) head.add(ball(0.045, skin, sx, 0.0, 0, 0.85));
+  head.add(ball(0.038, skin, 0, -0.035, 0.225, 0.85));
   for (const sx of [-0.082, 0.082]) head.add(ball(0.032, dark, sx, 0.02, 0.196));
   for (const sx of [-0.085, 0.085]) {
     const brow = box(0.075, 0.022, 0.03, dark, sx, 0.075, 0.185);
@@ -366,5 +389,5 @@ export function createHero() {
 
   setStyle(DEFAULT_STYLE);
 
-  return { group, body, setStyle, rightArm, leftArm, sword, gun, materials };
+  return { group, body, setStyle, rightArm, leftArm, sword, gun, materials, legs, cape };
 }
