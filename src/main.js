@@ -283,5 +283,5 @@ renderBoards();
 game.preview();
 showMenu();
 
-// Ask start.ng who is here. A slow or missing answer leaves us as a guest.
-getCurrentUser().then(applyUser);
+// Ask start.ng who is here. A slow, failed or missing answer leaves us as a guest.
+getCurrentUser().then(applyUser, () => applyUser(null));
