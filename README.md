@@ -96,8 +96,8 @@ loops.
 
 ## How it uses start.ng
 
-The game never sees passwords, tokens or emails, and never calls the start.ng API. All of
-the sign-in wiring is in one file, `src/platform.js`.
+The game never sees passwords, emails or the player's real start.ng sign-in. All of the
+sign-in wiring is in one file, `src/platform.js`.
 
 When the game loads it drops a hidden iframe pointing at `<start.ng>/connect` and asks it
 `startng:whoami` over `postMessage`. start.ng replies with `{ id, name, style }` or null.
@@ -111,14 +111,23 @@ giving up after one shot. A slow or missing answer is treated as "no answer", ne
 checking your profile rather than offering sign-in all over again — and a guest button
 works immediately the whole time.
 
+Signing in also hands the game a **game session** in the address
+(`#startng_session=…`). It only unlocks this game's player endpoint and lasts two hours;
+it is never the player's password or start.ng sign-in. The game keeps it for the tab,
+strips it from the address bar, and asks `GET /games/nightfall-arena/player` who is
+playing. That answer is used first, because it still works in browsers that wall the
+connect iframe off from start.ng's storage; the connect page is the fallback and still
+supplies start.ng's guest look. An expired session is dropped and a fresh answer asked
+for. The sign-out button forgets the session locally before leaving for start.ng.
+
 Where start.ng lives is worked out from the hostname: `.start.ng` means production,
 `.start.localhost` means the local dev stack, and anything else means there is no
 start.ng at all and the game runs guest-only.
 
 Signing in sends you to start.ng with a `return_to` pointing back at the game, and
 start.ng brings you back once you are done. The check re-runs when you come back to the
-tab or the window, so if you sign out on start.ng the game notices. Once signed in, the
-menu still offers both your start.ng profile and a plain guest run.
+tab or the window, so a change on start.ng is picked up. Once signed in, the menu still
+offers both your start.ng profile and a plain guest run.
 
 Your start.ng look lands on your character:
 

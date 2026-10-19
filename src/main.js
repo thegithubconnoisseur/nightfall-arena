@@ -1,4 +1,4 @@
-import { START_NG, getCurrentUser, onUserChange, signIn, guestStyle, returnedFromSignIn } from './platform.js';
+import { START_NG, getCurrentUser, onUserChange, signIn, signOut, guestStyle, returnedFromSignIn } from './platform.js';
 import { normalizeStyle } from './character.js';
 import { Game } from './game.js';
 import { playerId, submitRun, leaderboard } from './saves.js';
@@ -90,9 +90,7 @@ function renderIdentity() {
     out.type = 'button';
     out.className = 'btn link';
     out.textContent = 'Sign out on start.ng';
-    out.addEventListener('click', () => {
-      location.href = `${START_NG}/`;
-    });
+    out.addEventListener('click', signOut);
     buttons.append(out);
     return;
   }
